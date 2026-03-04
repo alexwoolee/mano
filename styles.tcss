@@ -1,0 +1,103 @@
+$color-screen-bg: #201E1D;
+$color-surface: #272524;
+$color-border: #595550;
+$color-accent: #D38466;
+$color-error: #C16A6A;
+
+Screen {
+    background: $color-screen-bg;
+}
+
+/* Welcome Screen */
+#welcome-screen {
+    align: center middle;
+    padding: 4;
+}
+
+#welcome-interface {
+    background: $color-surface;
+    border: wide white;
+    align: center middle;
+    width: 100%;
+    height: 100%;
+}
+
+#welcome-title {
+    color: $color-accent;
+    text-style: bold;
+    text-align: center;
+    margin-bottom: 1;
+}
+
+.user-input {
+    margin-bottom: 1;
+    width: 40;
+}
+
+.user-input:focus {
+    border: tall $color-accent;
+}
+
+/* Main Layout */
+#grid {
+    layout: grid;
+    /* grid-size: <columns> <rows> */
+    grid-size: 2 1;
+    margin-bottom: 0;
+    height: 11;
+}
+
+Static {
+    content-align: center middle;
+}
+
+/* Content Areas */
+.panel {
+    padding: 1 1;
+    border: round $color-border;
+    background: $color-surface;
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    content-align-horizontal: center;
+    content-align-vertical: middle;
+    text-align: center;
+}
+
+#command-history {
+    content-align: left top;
+    height: 1fr;
+    width: 100%;
+    margin-bottom: 1;
+    padding-left: 2;
+    margin-left: 0;
+    margin-right: 0;
+    border: round $color-border;
+    background: $color-surface;
+}
+
+#output {
+    height: 100%;
+    overflow: auto;
+    background: transparent;
+    padding: 1 2; /* 1 row top/bottom, 2 columns left/right */
+}
+
+/* Input Components */
+.input-text {
+    dock: bottom;
+    margin-bottom: 1;
+    border: tall $color-border;
+    background: $color-surface;
+}
+
+.input-text:focus {
+    border: tall $color-accent; /* Claude-like soft amber focus */
+}
+
+/* Utilities */
+#error {
+    color: $color-error;
+    text-style: bold;
+}

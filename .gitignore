@@ -1,2 +1,6 @@
-# Avoid committing database files
 *.db
+
+./textual_demo.py
+./__pycache__
+
+./python.md
