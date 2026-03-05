@@ -1,96 +1,199 @@
-import art
+# 1. Standard Library
 import sqlite3
-from typing import List, Any
+from typing import Any
 from datetime import date, time
+
+# 2. Third-party (Rich, Textual)
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Vertical, Center
 from textual.screen import Screen
 from textual.validation import ValidationResult, Validator
-from textual.widgets import Welcome, Button, Label, Header, Input, Static, RichLog
+from textual.widgets import Button, Label, Header, Input, Static, RichLog
 
+# 3. Local
+import art
+
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+
+def setup_database(name: str, age: int) -> None:
+    """Setup user info table and data."""
+    with sqlite3.connect("user.db") as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user (
+                user_id INTEGER PRIMARY KEY, 
+                name TEXT, 
+                age INT, 
+                new_user BOOLEAN)
+            """
+        )
+        cursor.execute(
+            "INSERT INTO user (name, age, new_user) VALUES (?, ?, ?)",
+            (name, age, False),
+        )
+        # Setup skills table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS skills (
+                skill_id INTEGER PRIMARY KEY, 
+                name TEXT, 
+                start_date DATE DEFAULT CURRENT_DATE, 
+                start_time TIME DEFAULT CURRENT_TIMESTAMP, 
+                total_days INTEGER DEFAULT 0)
+            """
+        )
+        # Setup skills statistics table
+        cursor.execute("CREATE TABLE IF NOT EXISTS skills_stats (skill_id INTEGER)")
+        # Setup sessions table
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS sessions (
+                skill TEXT, 
+                date DATE, 
+                start_time TIME, 
+                duration TIMESTAMP)
+            """
+        )
+        # Commit changes
+        connection.commit()
         
-# Helpers
-def prepare_data_for_add_skill(user_input: object) -> object:
-    pass
 
 def load_user_table(connection: sqlite3.Connection) -> tuple[str, bool] | None:
-    cursor = connection.cursor() 
+    """Loads all the data from the user table."""
+    cursor = connection.cursor()
     cursor.execute("SELECT name, new_user FROM user LIMIT 1")
     row = cursor.fetchone()
-    if row: 
+    if row:
         user_name = row[0]
         new_user = row[1]
         return user_name, bool(new_user)
     return None
 
 
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
 def add_skill_command(connection: sqlite3.Connection, skill_id: int, name: str, start_date: date, start_time: time, total_days: int) -> None:
     """Adds a command to the database and interface"""
     cursor = connection.cursor()
     cursor.execute(
-        "INSERT INTO SKILLS (SKILL_ID, NAME, START_DATE, START_TIME, TOTAL_DAYS) VALUES (?, ?, ?, ?, ?)",
-        (skill_id, name, start_date, start_time, total_days),
+        """INSERT INTO SKILLS (
+            SKILL_ID, 
+            NAME, 
+            START_DATE, 
+            START_TIME, 
+            TOTAL_DAYS) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (skill_id, name, start_date, start_time, total_days),
     )
-    
 
-def remove_skill_command(connection: sqlite3.Connection, skill_id: int) -> None: 
+
+def remove_skill_command(connection: sqlite3.Connection, skill_id: int) -> None:
     cursor = connection.cursor()
-    cursor.execute( 
-        "DELETE FROM SKILLS (SKILL_ID, START_DATE DAYS)"
-    )
-    pass
-    
-   
-def time_skill_command(connection: sqlite3.Connection, skill_id: int) -> None: 
+    cursor.execute("DELETE FROM SKILLS WHERE SKILL_ID = ?", (skill_id,))
+
+
+def time_skill_command(connection: sqlite3.Connection, skill_id: int) -> None:
     """Times the skill and adds the data to stats and sessions table"""
-    pass 
+    pass
 
 
-def list_skills_command(connection: sqlite3.Connection) -> None: 
+def list_skills_command(connection: sqlite3.Connection) -> None:
     """List all the skills the user has"""
     pass
 
 
-def help_command(log: RichLog, help_information: str) -> None: 
+def help_command(log: RichLog, help_information: str) -> None:
     """Displays help information in the TUI"""
     log.write(help_information)
-    
 
-def quit_command(self) -> None: 
+
+def quit_command(self) -> None:
     """Exits the app"""
     self.app.exit()
+
+
+# ---------------------------------------------------------------------------
+# Utils/Helpers
+# ---------------------------------------------------------------------------
+
+def prepare_data_for_add_skill(user_input: object) -> object:
+    """Handles user input into an deliverable object for adding skills"""
+    pass
+
+
+def draw_art(art_grid: list[list[str]]) -> str:
+    """Draws ASCII art"""
+    result = []
+    for row in art_grid:
+        line = "".join(row)
+        result.append(line)
+
+    return "\n".join(result)
+
+
+def is_valid_command(command: str, command_list: list[str]) -> bool:
+    """Helper function to validate a command"""
+    return command in command_list
+
+
+# ---------------------------------------------------------------------------
+# Command handling
+# ---------------------------------------------------------------------------
+
+class CommandHandler:
+    def parse_command(self, command: str, command_list: list[str]) -> dict[str, Any]:
+        if command in command_list:
+            result = {"status": 1, "command": "dummy", "message": "dummy"}
+            if command == "/quit" or command == "/q":
+                result = self.create_result(0, "quit", "[orange]exiting...[/orange]")
+            elif command == "/help":
+                # Append help info to Static
+                result = self.create_result(
+                    0, "help", "[green]printing help...[/green]"
+                )
+            elif command == "/clear":
+                result = self.create_result(
+                    0, "clear", "[green]clearing log...[/green]"
+                )
+            elif command == "/add": 
+                result = self.create_result(
+                    0, "help", "[yellow]adding command...[/yellow]"
+                ) 
+            return result
+
+        else:
+            # Append error msg to Static
+            result = self.create_result(
+                1, "error", "[red]error occured: command faulty[/red]"
+            )
+            return result
+
+    def create_result(self, status: int, command: str, message: str) -> dict[str, Any]:
+        return {"status": status, "command": command, "message": message}
+
+
+class ValidateCommand(Validator):
+    """Validate commands"""
     
+    def __init__(self, command_list):
+        self.command_list = command_list
 
-def setup_database(name: str, age: int) -> None:
-    """Setup user info table and data"""
-    with sqlite3.connect("user.db") as connection:
-        cursor = connection.cursor()
+    def validate(self, value: str) -> ValidationResult:
+        if is_valid_command(value, self.command_list):
+            return self.success()
+        else:
+            return self.failure("Not a valid command")
 
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS user (user_id INTEGER PRIMARY KEY, name TEXT, age INT, new_user BOOLEAN)"
-        )
-        cursor.execute(
-            "INSERT INTO user (name, age, new_user) VALUES (?, ?, ?)",
-            (name, age, False),
-        )
 
-        # Setup skills table
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS skills (skill_id INTEGER PRIMARY KEY, name TEXT, start_date DATE, start_time TIME, total_days INTEGER)"
-        )
-
-        # Setup skills statistics table
-        cursor.execute("CREATE TABLE IF NOT EXISTS skills_stats (skill_id INTEGER)")
-
-        # Setup sessions table
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS sessions (skill TEXT, date DATE, start_time TIME, duration TIMESTAMP)"
-        )
-
-        # Commit changes
-        connection.commit()
-        
+# ---------------------------------------------------------------------------
+# Screens
+# ---------------------------------------------------------------------------
 
 class WelcomeScreen(Screen):
     """Welcome screen shown only to new users"""
@@ -99,7 +202,7 @@ class WelcomeScreen(Screen):
         with Container(id="welcome-screen"):
             with Vertical(name="Components of Welcome Screen", id="welcome-interface"):
                 with Center():
-                    yield Label("Welcome to PekoFocus", id="welcome-title")
+                    yield Label("Welcome to Mano", id="welcome-title")
                 with Center():
                     yield Input(
                         placeholder="Username",
@@ -138,7 +241,6 @@ class WelcomeScreen(Screen):
 
         if name and age:
             age = int(age)
-            print(name, age)
 
             # Setup database personal database for user
             setup_database(name, age)
@@ -165,7 +267,7 @@ class MainScreen(Screen):
             "/list",
             "/clear",
             "/quit",
-            "/timer", 
+            "/timer",
         ]
 
     def compose(self) -> ComposeResult:
@@ -224,6 +326,10 @@ class MainScreen(Screen):
                 log.clear()
             elif command == "help":
                 help_command(log, f" /add \n /list \n /quit \n /clear")
+            elif command == "add": 
+                with sqlite3.connect("user.db") as connection: 
+                    cursor = connection.cursor()
+                    add_skill_command()
         else:
             log.write(Text.from_markup(f"\n>[red]No command entered.[/red]"))
 
@@ -242,7 +348,7 @@ class MainScreen(Screen):
     def on_mount(self) -> None:
         self.title = "Mano"
         self.sub_title = "One second towards 万"
-        
+
         current_app: Any = self.app
         user_name = current_app.user_name
         welcome_static_widget = self.query_one(
@@ -253,73 +359,24 @@ class MainScreen(Screen):
         )
 
 
-def draw_art(art_grid: List[List[str]]) -> str:
-    result = []
-    for row in art_grid:
-        line = "".join(row)
-        result.append(line)
-
-    return "\n".join(result)
-
-
-class CommandHandler:
-    def parse_command(self, command: str, command_list: List[str]) -> dict[str, Any]:
-        if command in command_list:
-            result = {"status": 1, "command": "dummy", "message": "dummy"}
-            if command == "/quit" or command == "/q":
-                result = self.create_result(0, "quit", "[orange]exiting...[/orange]")
-            elif command == "/help":
-                """Append help info to Static"""
-                result = self.create_result(
-                    0, "help", "[green]printing help...[/green]"
-                )
-            elif command == "/clear":
-                result = self.create_result(
-                    0, "clear", "[green]clearing log...[/green]"
-                )
-            return result
-
-        else:
-            """Append error msg to Static"""
-            result = self.create_result(
-                1, "error", "[red]error occured: command faulty[/red]"
-            )
-            return result
-
-    def create_result(self, status: int, command: str, message: str) -> dict[str, Any]:
-        return {"status": status, "command": command, "message": message}
-
-
-class ValidateCommand(Validator):
-    def __init__(self, command_list):
-        self.command_list = command_list
-
-    def validate(self, value: str) -> ValidationResult:
-        if is_valid_command(value, self.command_list):
-            return self.success()
-        else:
-            return self.failure("Not a valid command")
-
-
-def is_valid_command(command: str, command_list: List[str]) -> bool:
-    """Helper function to validate a command"""
-    return command in command_list
-
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
 
 class CommandLine(App):
     """Control manager for what screen is shown"""
     CSS_PATH = "styles.tcss"
-    
+
     def on_mount(self) -> None:
         self.user_name = "Kepo"
         self.new_user = True
-        
-        with sqlite3.connect("user.db") as connection: 
+
+        with sqlite3.connect("user.db") as connection:
             user = load_user_table(connection)
-            
-        if user: 
+
+        if user:
             self.user_name, self.new_user = user
-        
+
         if self.new_user:
             self.push_screen(WelcomeScreen())
         else:
