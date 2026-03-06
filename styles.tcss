@@ -88,12 +88,12 @@ Static {
 .input-text {
     dock: bottom;
     margin-bottom: 1;
-    border: tall $color-border;
+    border: round $color-border;
     background: $color-surface;
 }
 
 .input-text:focus {
-    border: tall $color-accent; /* Claude-like soft amber focus */
+    border: round $color-accent; /* Claude-like soft amber focus */
 }
 
 /* Utilities */
