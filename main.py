@@ -13,6 +13,7 @@ from rich.align import Align
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Vertical, Center
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.validation import ValidationResult, Validator
 from textual.widgets import Button, Label, Header, Input, Static, RichLog
 
@@ -20,7 +21,7 @@ from textual.widgets import Button, Label, Header, Input, Static, RichLog
 import art
 
 COMMANDS = {
-    "/help", "/add", "/list", "/clear", "/quit", "/timer", "/q"
+    "/help", "/add", "/list", "/clear", "/quit", "/timer", "/q", "/delete"
 }
 
 # ---------------------------------------------------------------------------
@@ -96,17 +97,21 @@ def add_skill_command(connection: sqlite3.Connection, name: str) -> None:
     connection.commit()
 
 
-def remove_skill_command(connection: sqlite3.Connection, skill_id: int) -> None:
+def remove_skill_command(connection: sqlite3.Connection, skill_name: str) -> None:
     cursor = connection.cursor()
-    query = "DELETE FROM SKILLS WHERE SKILL_ID = ?"
-    cursor.execute(query, (skill_id,))
+    query = "DELETE FROM SKILLS WHERE NAME = ?"
+    cursor.execute(query, (skill_name,))
 
 
 def time_skill_command(connection: sqlite3.Connection, skill_id: int) -> None:
     """Times the skill and adds the data to stats and sessions table"""
     # On function called, get the current timestamp 
+    cursor = connection.cursor()
     
-    # Using python's time library
+    query = "SELECT"
+    cursor.execute(query)
+    
+    # Using datetime to track timer live
     # Output live timer in terminal
     # Get cool animated spinner
     
@@ -205,6 +210,10 @@ class CommandHandler:
                 result = self.create_result(
                     0, "add", "[blue]•[/blue] [yellow]adding skill...[/yellow]"
                 ) 
+            elif cmd == "/delete":
+                result = self.create_result( 
+                    0, "delete", "[blue]•[/blue] [aqua]removing skill...[/aqua]"
+                )
             elif cmd == "/list":
                 result = self.create_result(
                     0, "list", "[blue]•[/blue] [pink]listing skills...[/pink]"
@@ -353,20 +362,24 @@ class MainScreen(Screen):
                 log.write(Rule(title="A list of all possible commands", align="center"))
                 help_command(log, f"/add <skill_name> -- adds a skill\nlist -- lists all your skills\n/quit -- quit the app\nclear -- clear the terminalk")
                 log.write(Rule())
-            elif command == "add": 
+            elif command in ["add", "delete", "list", "timer"]: 
                 with sqlite3.connect("user.db") as connection: 
-                    arg_list = event.value.split(" ", maxsplit=1)
-                    # Ensure that a parameter was provided
-                    skill_name = arg_list[1]
-                    add_skill_command(connection, skill_name)
-            elif command == "list": 
-                with sqlite3.connect("user.db") as connection: 
-                    list_skills_command(self, connection)
-            elif command == "timer": 
-                with sqlite3.connect("user.db") as connection: 
-                    # TODO
-                    # time_skill_command
-                    pass
+                    if command == "delete":
+                        arg_list = event.value.split(" ", maxsplit=1)
+                        # Ensure that a parameter was provided
+                        skill_name = arg_list[1]
+                        remove_skill_command(connection, skill_name)
+                    elif command == "add": 
+                        arg_list = event.value.split(" ", maxsplit=1)
+                        # Ensure that a parameter was provided
+                        skill_name = arg_list[1]
+                        add_skill_command(connection, skill_name)
+                    elif command == "list": 
+                        list_skills_command(self, connection)
+                    elif command == "timer": 
+                        # TODO
+                        # time_skill_command
+                        pass
         else:
             log.write(Text.from_markup(f"\n❯[red]No command entered.[/red]"))
 
