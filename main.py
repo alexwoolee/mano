@@ -1,7 +1,9 @@
+# Author: Alex W. Lee
+
 # 1. Standard Library
 import sqlite3
 from typing import Any
-from datetime import date, time
+from datetime import date, time, datetime
 
 # 2. Third-party (Rich, Textual)
 from rich.text import Text
@@ -11,17 +13,19 @@ from rich.columns import Columns
 from rich.style import Style
 from rich.align import Align
 from textual.app import App, ComposeResult
-from textual.containers import Container, Grid, Vertical, Center
+from textual.containers import Container, Grid, Vertical, Center, Horizontal
+from textual.reactive import reactive
 from textual.screen import Screen
 from textual.timer import Timer
 from textual.validation import ValidationResult, Validator
 from textual.widgets import Button, Label, Header, Input, Static, RichLog
+from textual.widget import Widget
 
 # 3. Local
 import art
 
 COMMANDS = {
-    "/help", "/add", "/list", "/clear", "/quit", "/timer", "/q", "/delete"
+    "/help", "/add", "/list", "/clear", "/quit", "/q", "/timer", "/delete", 
 }
 
 # ---------------------------------------------------------------------------
@@ -52,8 +56,7 @@ def setup_database(name: str, age: int) -> None:
                 skill_id INTEGER PRIMARY KEY, 
                 name TEXT, 
                 start_date DATE DEFAULT CURRENT_DATE, 
-                start_time TIME DEFAULT CURRENT_TIMESTAMP, 
-                total_days INTEGER DEFAULT 0)
+                start_time TIME DEFAULT CURRENT_TIMESTAMP)
             """
         )
         # Setup skills statistics table
@@ -61,10 +64,13 @@ def setup_database(name: str, age: int) -> None:
         # Setup sessions table
         cursor.execute(
             """CREATE TABLE IF NOT EXISTS sessions (
-                skill TEXT, 
-                date DATE, 
-                start_time TIME, 
-                duration TIMESTAMP)
+                session_id INTEGER PRIMARY KEY,
+                skill_id INTEGER, 
+                date DATE DEFAULT CURRENT_DATE, 
+                start_time DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                duration INTEGER,
+                FOREIGN KEY(skill_id) REFERENCES skills(skill_id)
+            )
             """
         )
         # Commit changes
@@ -93,32 +99,72 @@ def load_user_table(connection: sqlite3.Connection) -> tuple[str, bool] | None:
 def add_skill_command(connection: sqlite3.Connection, name: str) -> None:
     """Adds a command to the database and interface"""
     cursor = connection.cursor()
+    name = name.strip().lower()
     cursor.execute("INSERT INTO SKILLS (name) VALUES (?)", (name,))
     connection.commit()
 
 
 def remove_skill_command(connection: sqlite3.Connection, skill_name: str) -> None:
     cursor = connection.cursor()
+    skill_name = skill_name.strip().lower()
     query = "DELETE FROM SKILLS WHERE NAME = ?"
     cursor.execute(query, (skill_name,))
 
 
-def time_skill_command(connection: sqlite3.Connection, skill_id: int) -> None:
+def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: str, log: RichLog) -> bool:
     """Times the skill and adds the data to stats and sessions table"""
-    # On function called, get the current timestamp 
+    success = False
+    # Function called, get the current timestamp 
     cursor = connection.cursor()
+        
+    cursor.execute(
+        "SELECT skill_id FROM skills WHERE LOWER(name) = LOWER(?)", 
+        (skill_name.strip().lower(),)
+    )
+    print(f"DEBUG skill_name='{skill_name}'")
     
-    query = "SELECT"
-    cursor.execute(query)
+    row = cursor.fetchone()
     
-    # Using datetime to track timer live
-    # Output live timer in terminal
-    # Get cool animated spinner
+    if row is None:
+        log.write(Text.from_markup("[blue]•[/blue] [red]error: this skill does not exist.[/red]"))
+        return success
+
+    skill_id = row[0]
+        
+    # action is start 
+    if action == "start": 
+        # Using datecursortime to track timer live
+        # Output live timer in terminal
+        # Get cool animated spinner
+        match_query = "SELECT name, skill_id FROM skills WHERE name = ? AND skill_id = ?"
+        cursor.execute(match_query, (skill_name, skill_id))
+        cursor.execute("INSERT INTO sessions (skill_id) VALUES (?)" , (skill_id, ),)
+        success = True 
+    # action is stop
+    elif action == "stop":
+        # get the starting timestamp we obtained in action start
+        # get the current timestamp
+        # find the difference
+        # store it as duration in sessions 
+        
+        # Find the most recent unfinished session, ensure only close unfinished sessions with IS NULL condition
+        query = "SELECT start_time FROM sessions WHERE skill_id = ? AND duration IS NULL ORDER BY start_time DESC LIMIT 1"
+        cursor.execute(query, (skill_id,))
+        start_time_string = cursor.fetchone()[0]
+        start_time = datetime.fromisoformat(start_time_string)
+        end_time = datetime.now()
+        
+        duration = int((end_time - start_time).total_seconds())
+        
+        update_query = "UPDATE sessions SET duration = ? WHERE start_time = ? AND skill_id = ?"
+        cursor.execute(update_query, (duration, start_time, skill_id, ))
+        success = True
+    # invalid action
+    else: 
+        log.write("[blue]•[/blue][red]error: please write a valid timer action[/red]")
+        success = False
     
-    # On function exit, get the final timestamp
-    # Get the difference 
-    # Store the difference in sessions
-    pass
+    return success
 
 
 def list_skills_command(self, connection: sqlite3.Connection) -> None:
@@ -128,21 +174,19 @@ def list_skills_command(self, connection: sqlite3.Connection) -> None:
     cursor.execute(query)
     
     skills = cursor.fetchall()   
-    
-    output = []           
-    
+        
     # for each row in rows, place in panel, and print each skill
     log = self.query_one("#output", RichLog)
         
-    log_feed = ""
+    log_feed = []
         
-    for skill in skills: 
-        log_feed += format_skill_output(skill)
+    for i, (skill, ) in enumerate(skills): 
+        log_feed.append(format_skill_output(i, skill))
         
-    log.write(Panel(f"{log_feed}"))
+    log.write(Panel(f"{"\n".join(log_feed)}", expand=False))
     
-def format_skill_output(skill: str) -> str: 
-    return f"{skill}\n"
+def format_skill_output(index: int, skill: str) -> str: 
+    return f"{index} -- {skill.title()}"
 
 
 def help_command(log: RichLog, help_information: str) -> None:
@@ -181,7 +225,37 @@ def is_valid_command(command: str) -> bool:
     base_command = command.split(" ", maxsplit=1)[0]
     return base_command in COMMANDS
 
+def print_welcome_message(self, user_name: str) -> None: 
+    log = self.query_one("#output", RichLog)
+    # A sharp square using heavy box-drawing characters with ▌ for eyes
+    ascii_art = (
+        "[dark_orange3]██████████[/dark_orange3]\n"
+        "[dark_orange3]██[/dark_orange3][on black] [/on black][dark_orange3]████[/dark_orange3][on black] [/on black][dark_orange3]██[/dark_orange3]\n"
+        "[dark_orange3]██████████[/dark_orange3]\n"
+        "[dark_orange3]██████████[/dark_orange3]\n\n"
+    )
+    title = f"[bold dark_orange]Mano[/bold dark_orange]\n"
+    welcome_message = f"Welcome back [gold1]{user_name}[/gold1]!\n\n"
+    motivation = "What's the plan today?"
+    
+    content = Text.from_markup(welcome_message + ascii_art + title + motivation, justify="center")
+    
+    panel = Panel(content, border_style="dark_orange3", expand=False, padding=(1, 4), title="v0.0.1")
+    log.write(panel)
+    
 
+# ---------------------------------------------------------------------------
+# Time
+# ---------------------------------------------------------------------------
+class Clock(Static):     
+    def on_mount(self) -> None:
+        self.update_time()
+        self.set_interval(1, self.update_time)
+
+    def update_time(self) -> None:
+        self.update(f"{datetime.now().strftime("%H:%M:%S")}")
+
+    
 # ---------------------------------------------------------------------------
 # Command handling
 # ---------------------------------------------------------------------------
@@ -190,9 +264,9 @@ class CommandHandler:
     def parse_command(self, command: str) -> dict[str, Any]:
         command = command.strip()
         if not command:
-            return self.create_result(1, "error", "[red]No command entered.[/red]")
+            return self.create_result(1, "error", "[blue]•[/blue] [red]No command entered.[/red]")
         
-        cmd = command.split()[0] if command.split() else command
+        cmd = command.split()[0] if command.split() else command    
         if cmd in COMMANDS:
             result = {"status": 1, "command": "dummy", "message": "dummy"}
             if cmd == "/quit" or cmd == "/q":
@@ -216,18 +290,18 @@ class CommandHandler:
                 )
             elif cmd == "/list":
                 result = self.create_result(
-                    0, "list", "[blue]•[/blue] [pink]listing skills...[/pink]"
+                    0, "list", "[blue]•[/blue] [green]listing skills...[/green]"
                 ) 
             elif cmd == "/timer":
                 result = self.create_result( 
-                    0, "timer", "[blue]•[/blue] [purple]starting timer...[/purple]"
+                    0, "timer", "[blue]•[/blue] [purple]timer command...[/purple]"
                 )
             return result
 
         else:
             # Append error msg to Static
             result = self.create_result(
-                1, "error", "[red]error occured: command faulty[/red]"
+                1, "error", "[blue]•[/blue] [red]error occured: command faulty[/red]"
             )
             return result
 
@@ -283,9 +357,6 @@ class WelcomeScreen(Screen):
                 with Center():
                     yield Static("", id="error")
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        pass
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         name_input = self.query_one("#name-input", Input)
         age_input = self.query_one("#age-input", Input)
@@ -305,28 +376,38 @@ class WelcomeScreen(Screen):
             # Switch from Welcome to Main Screen
             self.app.switch_screen(MainScreen())
         else:
-            error_msg.update("Please enter a valid input!")
+            error_msg.update("[blue]•[/blue] Please enter a valid input!")
 
 
 class MainScreen(Screen):
-    """The main screen the users see"""
+    """Main screen that the users see."""
+    COMMAND_HANDLERS = {
+        "quit": "_handle_quit",
+        "clear": "_handle_clear",
+        "help": "_handle_help",
+        "add": "_handle_help",
+        "delete": "_handle_delete",
+        "list": "_handle_list",
+        "timer": "_handle_timer",
+    }
 
     def __init__(self):
         # Call the parent class constructor to initalize its variables
         super().__init__()
         self.command_handler = CommandHandler()
-        # Let MainScreen act as source of truth for commands
 
     def compose(self) -> ComposeResult:
         yield Header()
-
+        
+        # Main user interactable elements
         with Container(id="main-screen"):
+            # 1: Area for logged commands and results
             with Container(id="command-history"):
                 yield RichLog(
                     id="output",
                     auto_scroll=True,
                 )
-
+            # 2: Box for users to provide us input
             yield Input(
                 placeholder="Type @ to mention skills, / for commands",
                 classes="input-text",
@@ -335,54 +416,77 @@ class MainScreen(Screen):
                 validate_on=["submitted"],
                 validators=[ValidateCommand()],
             )
+            # 3: Row for timer 
+            yield MyTimerBox()
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        """o.i.c. -> reacts to typing (i.e. UI feedback only)"""
-        log = self.query_one("#output", RichLog)
+
+    def _handle_quit(self, input_value: str) -> None: 
+        quit_command(self)
+    
+    def _handle_clear(self, input_value: str) -> None:
+        pass
+    
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """o.i.s. -> does things (command parsing, execution)"""
         log = self.query_one("#output", RichLog)
+        
+        if not event.value: 
+            log.write(Text.from_markup(f"\n[blue]•[/blue] [red]No command entered.[/red]"))
+            return
 
-        if event.value:
-            parsed_command = self.command_handler.parse_command(event.value)
-            status = parsed_command["status"]
-            command = parsed_command["command"]
-            message = parsed_command["message"]
 
-            output_text = f"\n> {event.value}\n{parsed_command['message']}"
+        parsed_command = self.command_handler.parse_command(event.value)
+        status = parsed_command["status"]
+        command = parsed_command["command"]
+        message = parsed_command["message"]
 
-            log.write(Text.from_markup(output_text))
+        output_text = f"\n❯ {event.value}\n{parsed_command['message']}"
 
-            if command == "quit":
-                quit_command(self)
-            elif command == "clear":
-                log.clear()
-            elif command == "help":
-                log.write(Rule(title="A list of all possible commands", align="center"))
-                help_command(log, f"/add <skill_name> -- adds a skill\nlist -- lists all your skills\n/quit -- quit the app\nclear -- clear the terminalk")
-                log.write(Rule())
-            elif command in ["add", "delete", "list", "timer"]: 
-                with sqlite3.connect("user.db") as connection: 
-                    if command == "delete":
-                        arg_list = event.value.split(" ", maxsplit=1)
-                        # Ensure that a parameter was provided
-                        skill_name = arg_list[1]
-                        remove_skill_command(connection, skill_name)
-                    elif command == "add": 
-                        arg_list = event.value.split(" ", maxsplit=1)
-                        # Ensure that a parameter was provided
-                        skill_name = arg_list[1]
-                        add_skill_command(connection, skill_name)
-                    elif command == "list": 
-                        list_skills_command(self, connection)
-                    elif command == "timer": 
-                        # TODO
-                        # time_skill_command
-                        pass
-        else:
-            log.write(Text.from_markup(f"\n❯[red]No command entered.[/red]"))
+        log.write(Text.from_markup(output_text))
 
+        if command == "quit":
+            log.write(Text.from_markup(message))
+            quit_command(self)
+        elif command == "clear":
+            log.clear()
+        elif command == "help":
+            log.write(Rule(title="A list of all possible commands", align="center"), width=54)
+            help_command(log, 
+                            f"/add <skill>               -- adds a skill\n/delete <skill>            -- delete a skill\n/list                      -- lists all your skills\n/quit                      -- quit the app\n/clear                     -- clear the terminal\n/timer <skill> <action>    -- times your skills")
+            log.write(Rule(), width=54)
+        elif command in ["add", "delete", "list", "timer"]: 
+            with sqlite3.connect("user.db") as connection: 
+                arg_list = event.value.split(" ", maxsplit=1)
+                if command == "delete":
+                    # Ensure that a parameter was provided
+                    skill_name = arg_list[1]
+                    remove_skill_command(connection, skill_name)
+                elif command == "add": 
+                    # Ensure that a parameter was provided
+                    skill_name = arg_list[1]
+                    add_skill_command(connection, skill_name)
+                elif command == "list": 
+                    list_skills_command(self, connection)
+                elif command == "timer": 
+                    arg_list = event.value.split()
+                    
+                    if len(arg_list) != 3:  
+                        log.write("[blue]•[/blue] [red]Usage: /timer <skill> <start|stop>[/red]")
+                        return
+
+                    _, skill_name, action = arg_list
+                    
+                    timer = self.query_one(MyTimerBox)
+                    
+                    success = time_skill_command(connection, skill_name, action, log)
+                    
+                    if success and action == "start": 
+                        timer.start()
+                    elif success and action == "stop":
+                        timer.stop()
+                        timer.reset()
+                        
         event.input.clear()
 
         """
@@ -397,17 +501,53 @@ class MainScreen(Screen):
 
     def on_mount(self) -> None:
         self.title = "Mano"
-        self.sub_title = "Road to 万"
+        # self.sub_title = "Road to 万"
 
         current_app: Any = self.app
         user_name = current_app.user_name
+    
+        # Print welcome message in RichLog
+        print_welcome_message(self, user_name)
         
-        log = self.query_one("#output", RichLog)
-        
-        panel = Panel(f"Mano v0.0.1!\nTrack your skills to 10,000. Be diligent.", border_style="magenta")
-        log.write(Align(panel, align="center", vertical="middle"))
-                
 
+# --------------------------------------------------------------------------- 
+# Timer
+# ---------------------------------------------------------------------------
+
+class MyTimerBox(Horizontal): 
+    """Times each skill and displays it between RichLog and Input"""
+    # Holds the time for the specific session
+    elapsed_time: reactive[int] = reactive(0)
+    # Flag that tracks if the timer should run or not, controlled by start() and stop()
+    running: bool = False
+    
+    def on_mount(self) -> None: 
+        self.set_interval(1, self._tick)
+    
+    def _tick(self) -> None: 
+        if (self.running):
+            self.elapsed_time += 1
+        
+    def watch_elapsed_time(self, value: int) -> None: 
+        minutes = value // 60
+        seconds = value % 60 
+        self.query_one("#time-display", Static).update(f"{minutes:02}:{seconds:02}")
+    
+    def start(self): 
+        self.running = True
+        
+    def stop(self):
+        self.running = False
+        
+    def reset(self):
+        self.elapsed_time = 0
+    
+    def compose(self): 
+        yield Clock()
+        yield Static("", id="spacer") # Takes up the middle space
+        yield Static("00:00", id="time-display") 
+        
+    
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------

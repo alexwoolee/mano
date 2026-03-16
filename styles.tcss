@@ -3,9 +3,21 @@ $color-surface: #272524;
 $color-border: #595550;
 $color-accent: #D38466;
 $color-error: #C16A6A;
+$color-orange: #d75f00 ;
 
 Screen {
-    background: $color-screen-bg;
+    background: $color-surface;
+}
+
+Header {
+    background: $color-orange;
+    text-align: center;
+    content-align: center middle;
+}
+
+#main-screen {
+    padding-bottom: 1;
+    background: $color-surface;
 }
 
 /* Welcome Screen */
@@ -34,9 +46,10 @@ Screen {
     width: 40;
 }
 
+
 .user-input:focus {
     border: tall $color-accent;
-}
+} 
 
 /* Main Layout */
 #grid {
@@ -69,8 +82,6 @@ Static {
     content-align: left top;
     height: 1fr;
     width: 100%;
-    margin-bottom: 1;
-    padding-left: 2;
     margin-left: 0;
     margin-right: 0;
     border: round $color-border;
@@ -79,21 +90,44 @@ Static {
 
 #output {
     height: 100%;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: transparent;
     padding: 1 2; /* 1 row top/bottom, 2 columns left/right */
 }
 
-/* Input Components */
-.input-text {
-    dock: bottom;
+/* Timer */
+MyTimerBox {
+    height: 1;
     margin-bottom: 1;
-    border: round $color-border;
-    background: $color-surface;
 }
 
-.input-text:focus {
+#spacer {
+    width: 1fr;
+    background: transparent;
+}
+
+Clock {
+    background: $color-orange;
+    width: auto;
+}
+
+#time-display {
+    background: $color-orange;
+    width: auto;
+}
+
+/* Input Components */
+.input-text {
+    border: round $color-border;
+	background: $color-surface;
+    margin-bottom: 1;
+}
+
+.input-text:focus, .input-text.-valid:focus, .input-text.-invalid:focus {
     border: round $color-accent; /* Claude-like soft amber focus */
+	background: transparent;
+	background-tint: transparent;
 }
 
 /* Utilities */
