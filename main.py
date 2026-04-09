@@ -125,7 +125,7 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
     row = cursor.fetchone()
     
     if row is None:
-        log.write(Text.from_markup("[#cba6f7]•[/#cba6f7] [#f38ba8]error: this skill does not exist.[/#f38ba8]"))
+        history.mount(Static("[#cba6f7]•[/#cba6f7] [#f38ba8]error: this skill does not exist.[/#f38ba8]", classes="output-message"))
         return success
 
     skill_id = row[0]
@@ -160,7 +160,7 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
         success = True
     # invalid action
     else: 
-        log.write("[#cba6f7]•[/#cba6f7][#f38ba8]error: please write a valid timer action[/#f38ba8]")
+        history.mount(Static("[#cba6f7]•[/#cba6f7][#f38ba8]error: please write a valid timer action[/#f38ba8]", classes="output-message"))
         success = False
     
     return success
@@ -173,25 +173,51 @@ def list_skills_command(self, connection: sqlite3.Connection, history: VerticalS
     cursor.execute(query)
     
     skills = cursor.fetchall()   
-        
-    # for each row in rows, place in panel, and print each skill
-    log = self.query_one("#output", RichLog)
-        
-    log_feed = []
-        
-    for i, (skill, ) in enumerate(skills): 
-        log_feed.append(format_skill_output(i, skill))
-        
-    log.write(Panel(f"{"\n".join(log_feed)}", expand=False))
+    if not skills:
+        empty_message = (
+            "[bold #cba6f7]Skill Library[/bold #cba6f7]\n"
+            "[dim]No skills yet.[/dim]\n"
+            "[dim]Try[/dim] [bold]/add reading[/bold] [dim]to start your list.[/dim]"
+        )
+        history.mount(Static(empty_message, classes="output-message"))
+        return
+
+    list_of_skills = []
+    for i, (skill,) in enumerate(skills, start=1):
+        list_of_skills.append(format_skill_output(i, skill))
+
+    styled_output = (
+        "[bold #cba6f7]Skill Library[/bold #cba6f7]\n"
+        f"[dim]{len(skills)} tracked[/dim]\n\n"
+        + "\n".join(list_of_skills)
+    )
+    history.mount(Static(styled_output, classes="output-message"))
     
+     
 def format_skill_output(index: int, skill: str) -> str: 
-    return f"{index} -- {skill.title()}"
+    return (
+        f"[#89dceb]{index:>2}.[/#89dceb] "
+        f"[bold #cdd6f4]{skill.title()}[/bold #cdd6f4]"
+    )
 
 
-def help_command(log: RichLog, help_information: str) -> None:
+def help_command(history: VerticalScroll) -> None:
     """Displays help information in the TUI"""
-    log.write(help_information)
-
+    command_width = 31
+    help_lines = [
+        ("/add <skill>", "add a new skill"),
+        ("/delete <skill>", "remove a skill"),
+        ("/list", "view all tracked skills"),
+        ("/timer <skill> <start|stop>", "track session time"),
+        ("/clear", "clear command history"),
+        ("/quit", "exit Mano"),
+    ]
+    help_text = "[bold #cba6f7]Command Guide[/bold #cba6f7]\n[dim]Use slash commands in the input below[/dim]\n\n"
+    help_text += "\n".join(
+        f"[#89dceb]{command:<{command_width}}[/#89dceb] [dim]- {description}[/dim]"
+        for command, description in help_lines
+    )
+    history.mount(Static(help_text, classes="output-message"))
 
 def quit_command(self) -> None:
     """Exits the app"""
@@ -479,45 +505,35 @@ class MainScreen(Screen):
             
         elif command == "clear":
             history.query("*").remove()
-            
+
         elif command == "help":
-            help_text = (
-                "[b]A list of all possible commands[/b]\n"
-                "---------------------------------------\n"
-                "/add <skill>       -- adds a skill\n"
-                "/delete <skill>    -- delete a skill\n"
-                "/list              -- lists all your skills\n"
-                "/quit              -- quit the app\n"
-                "/clear             -- clear the terminal\n"
-                "/timer <skill> <action>    -- times your skills"
-            )
-            history.mount(Static(help_text, classes="output-message"))
-            
-        elif command in ["add", "delete", "list", "timer"]: 
-            with sqlite3.connect("user.db") as connection: 
+            help_command(history)
+
+        elif command in ["add", "delete", "list", "timer"]:
+            with sqlite3.connect("user.db") as connection:
                 arg_list = event.value.split(" ", maxsplit=1)
-                
+
                 if command == "delete" and len(arg_list) > 1:
                     # Ensure that a parameter was provided
                     skill_name = arg_list[1]
                     remove_skill_command(connection, skill_name)
-                    
-                elif command == "add" and len(arg_list) > 1: 
+
+                elif command == "add" and len(arg_list) > 1:
                     # Ensure that a parameter was provided
                     skill_name = arg_list[1]
                     add_skill_command(connection, skill_name)
-                    
-                elif command == "list": 
+
+                elif command == "list":
                     list_skills_command(self, connection, history)
-                    
-                elif command == "timer": 
+
+                elif command == "timer":
                     arg_list = event.value.split()
-                    
-                    if len(arg_list) != 3:  
+
+                    if len(arg_list) != 3:
                         history.mount(Static("• [red]Usage: /timer <skill> <start|stop>[/red]", classes="error-message"))
                     else:
-                        _, skill_name, action = arg_list 
-                        success = time_skill_command(connection, skill_name, action, history)
+                        _, skill_name, action = arg_list
+                        time_skill_command(connection, skill_name, action, history)
         
         history.scroll_end(animate=False)
         event.input.clear()

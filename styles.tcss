@@ -136,9 +136,9 @@ VerticalScroll {
 
 /* Output Message */
 .output-message {
-    border-left: thick $regal-navy;
-    padding-left: 1;
-    margin-bottom: 2;
+    border: round $regal-navy;
+    padding: 1 2;
+    margin-bottom: 1;
     color: $prussian-blue-dark;
 }
 
