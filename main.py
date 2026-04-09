@@ -6,6 +6,7 @@ from typing import Any
 from datetime import date, time, datetime
 
 # 2. Third-party (Rich, Textual)
+from rich import box
 from rich.text import Text
 from rich.rule import Rule
 from rich.panel import Panel 
@@ -13,10 +14,9 @@ from rich.columns import Columns
 from rich.style import Style
 from rich.align import Align
 from textual.app import App, ComposeResult
-from textual.containers import Container, Grid, Vertical, Center, Horizontal
+from textual.containers import Container, Grid, Vertical, Center, Horizontal, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.timer import Timer
 from textual.validation import ValidationResult, Validator
 from textual.widgets import Button, Label, Header, Input, Static, RichLog
 from textual.widget import Widget
@@ -86,8 +86,7 @@ def load_user_table(connection: sqlite3.Connection) -> tuple[str, bool] | None:
         return None
     row = cursor.fetchone()
     if row:
-        user_name = row[0]
-        new_user = row[1]
+        user_name, new_user = row
         return user_name, bool(new_user)
     return None
 
@@ -111,7 +110,7 @@ def remove_skill_command(connection: sqlite3.Connection, skill_name: str) -> Non
     cursor.execute(query, (skill_name,))
 
 
-def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: str, log: RichLog) -> bool:
+def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: str, history: VerticalScroll) -> bool:
     """Times the skill and adds the data to stats and sessions table"""
     success = False
     # Function called, get the current timestamp 
@@ -126,7 +125,7 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
     row = cursor.fetchone()
     
     if row is None:
-        log.write(Text.from_markup("[blue]•[/blue] [red]error: this skill does not exist.[/red]"))
+        log.write(Text.from_markup("[#cba6f7]•[/#cba6f7] [#f38ba8]error: this skill does not exist.[/#f38ba8]"))
         return success
 
     skill_id = row[0]
@@ -161,13 +160,13 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
         success = True
     # invalid action
     else: 
-        log.write("[blue]•[/blue][red]error: please write a valid timer action[/red]")
+        log.write("[#cba6f7]•[/#cba6f7][#f38ba8]error: please write a valid timer action[/#f38ba8]")
         success = False
     
     return success
 
-
-def list_skills_command(self, connection: sqlite3.Connection) -> None:
+# NOTE
+def list_skills_command(self, connection: sqlite3.Connection, history: VerticalScroll) -> None:
     """List all the skills the user has"""
     cursor = connection.cursor()
     query = "SELECT name FROM skills"    
@@ -225,37 +224,71 @@ def is_valid_command(command: str) -> bool:
     base_command = command.split(" ", maxsplit=1)[0]
     return base_command in COMMANDS
 
-def print_welcome_message(self, user_name: str) -> None: 
-    log = self.query_one("#output", RichLog)
-    # A sharp square using heavy box-drawing characters with ▌ for eyes
-    ascii_art = (
-        "[dark_orange3]██████████[/dark_orange3]\n"
-        "[dark_orange3]██[/dark_orange3][on black] [/on black][dark_orange3]████[/dark_orange3][on black] [/on black][dark_orange3]██[/dark_orange3]\n"
-        "[dark_orange3]██████████[/dark_orange3]\n"
-        "[dark_orange3]██████████[/dark_orange3]\n\n"
-    )
-    title = f"[bold dark_orange]Mano[/bold dark_orange]\n"
-    welcome_message = f"Welcome back [gold1]{user_name}[/gold1]!\n\n"
-    motivation = "What's the plan today?"
-    
-    content = Text.from_markup(welcome_message + ascii_art + title + motivation, justify="center")
-    
-    panel = Panel(content, border_style="dark_orange3", expand=False, padding=(1, 4), title="v0.0.1")
-    log.write(panel)
-    
 
-# ---------------------------------------------------------------------------
-# Time
-# ---------------------------------------------------------------------------
-class Clock(Static):     
+class WelcomeWidget(Static):
+    """Animated welcome card with a blinking mascot."""
+
+    blink_closed: reactive[bool] = reactive(False)
+
+    def __init__(self, user_name: str, **kwargs: Any) -> None:
+        super().__init__("", **kwargs)
+        self.user_name = user_name
+        self._blink_frame = 0
+        self._blink_pattern = (False, False, False, True, False, False)
+
+    def _build_ascii_art(self) -> str:
+        eye_row = (
+            "[medium_orchid1]██[/medium_orchid1][on #11111b] [/on #11111b]"
+            "[thistle1]██[/thistle1][on #11111b]  [/on #11111b][light_pink3]██[/light_pink3]"
+            "[on #11111b] [/on #11111b][light_cyan1]██[/light_cyan1]"
+        )
+        if self.blink_closed:
+            eye_row = (
+                "[medium_orchid1]██[/medium_orchid1][on #11111b] [/on #11111b]"
+                "[#11111b]██[/#11111b][on #11111b]  [/on #11111b][#11111b]██[/#11111b]"
+                "[on #11111b] [/on #11111b][light_cyan1]██[/light_cyan1]"
+            )
+
+        return (
+            "[plum2]██████████[/plum2]\n"
+            f"{eye_row}\n"
+            "[medium_purple1]██████████[/medium_purple1]\n\n"
+        )
+
+    def _build_panel(self) -> Panel:
+        brand = "[bold #bac2de]MANO[/bold #bac2de]\n"
+        title = f"[bold #cdd6f4]Welcome back, [#f5c2e7]{self.user_name}[/#f5c2e7].[/bold #cdd6f4]\n"
+        subtitle = (
+            "[#a6adc8]Start with [#89b4fa]/help[/#89b4fa] or log your next session "
+            "with [#cba6f7]/timer start[/#cba6f7].[/#a6adc8]"
+        )
+        content = Text.from_markup(brand + "\n" + self._build_ascii_art() + title + subtitle, justify="center")
+        return Panel(
+            content,
+            border_style="#585b70",
+            expand=False,
+            padding=(1, 3),
+            title="[bold #89b4fa]Mano[/bold #89b4fa]",
+            subtitle="[#7f849c]v0.0.1[/#7f849c]",
+            box=box.ROUNDED,
+        )
+
+    def watch_blink_closed(self, _: bool) -> None:
+        self.update(self._build_panel())
+
+    def _animate_blink(self) -> None:
+        self._blink_frame = (self._blink_frame + 1) % len(self._blink_pattern)
+        self.blink_closed = self._blink_pattern[self._blink_frame]
+
     def on_mount(self) -> None:
-        self.update_time()
-        self.set_interval(1, self.update_time)
+        self.update(self._build_panel())
+        self.set_interval(0.35, self._animate_blink)
 
-    def update_time(self) -> None:
-        self.update(f"{datetime.now().strftime("%H:%M:%S")}")
-
+def print_welcome_message(self, user_name: str) -> None: 
+    history = self.query_one("#command-history", VerticalScroll)
+    history.mount(WelcomeWidget(user_name, classes="welcome-widget"))
     
+
 # ---------------------------------------------------------------------------
 # Command handling
 # ---------------------------------------------------------------------------
@@ -264,44 +297,44 @@ class CommandHandler:
     def parse_command(self, command: str) -> dict[str, Any]:
         command = command.strip()
         if not command:
-            return self.create_result(1, "error", "[blue]•[/blue] [red]No command entered.[/red]")
+            return self.create_result(1, "error", "[#cba6f7]•[/#cba6f7] [#f38ba8]No command entered.[/#f38ba8]")
         
         cmd = command.split()[0] if command.split() else command    
         if cmd in COMMANDS:
             result = {"status": 1, "command": "dummy", "message": "dummy"}
             if cmd == "/quit" or cmd == "/q":
-                result = self.create_result(0, "quit", "[blue]•[/blue] [orange]exiting...[/orange]")
+                result = self.create_result(0, "quit", "[#cba6f7]•[/#cba6f7] [#fab387]exiting...[/#fab387]")
             elif cmd == "/help":
                 # Append help info to Static
                 result = self.create_result(
-                    0, "help", "[blue]•[/blue] [green]printing help...[/green]"
+                    0, "help", "[#cba6f7]•[/#cba6f7] [#a6e3a1]printing help...[/#a6e3a1]"
                 )
             elif cmd == "/clear":
                 result = self.create_result(
-                    0, "clear", "[blue]•[/blue] [green]clearing log...[/green]"
+                    0, "clear", "[#cba6f7]•[/#cba6f7] [#a6e3a1]clearing log...[/#a6e3a1]"
                 )
             elif cmd == "/add": 
                 result = self.create_result(
-                    0, "add", "[blue]•[/blue] [yellow]adding skill...[/yellow]"
+                    0, "add", "[#cba6f7]•[/#cba6f7] [#f9e2af]adding skill...[/#f9e2af]"
                 ) 
             elif cmd == "/delete":
                 result = self.create_result( 
-                    0, "delete", "[blue]•[/blue] [aqua]removing skill...[/aqua]"
+                    0, "delete", "[#cba6f7]•[/#cba6f7] [#94e2d5]removing skill...[/#94e2d5]"
                 )
             elif cmd == "/list":
                 result = self.create_result(
-                    0, "list", "[blue]•[/blue] [green]listing skills...[/green]"
+                    0, "list", "[#cba6f7]•[/#cba6f7] [#a6e3a1]listing skills...[/#a6e3a1]"
                 ) 
             elif cmd == "/timer":
                 result = self.create_result( 
-                    0, "timer", "[blue]•[/blue] [purple]timer command...[/purple]"
+                    0, "timer", "[#cba6f7]•[/#cba6f7] [#cba6f7]timer command...[/#cba6f7]"
                 )
             return result
 
         else:
             # Append error msg to Static
             result = self.create_result(
-                1, "error", "[blue]•[/blue] [red]error occured: command faulty[/red]"
+                1, "error", "[#cba6f7]•[/#cba6f7] [#f38ba8]error occured: command faulty[/#f38ba8]"
             )
             return result
 
@@ -376,7 +409,7 @@ class WelcomeScreen(Screen):
             # Switch from Welcome to Main Screen
             self.app.switch_screen(MainScreen())
         else:
-            error_msg.update("[blue]•[/blue] Please enter a valid input!")
+            error_msg.update("[#cba6f7]•[/#cba6f7] Please enter a valid input!")
 
 
 class MainScreen(Screen):
@@ -397,16 +430,11 @@ class MainScreen(Screen):
         self.command_handler = CommandHandler()
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        
         # Main user interactable elements
         with Container(id="main-screen"):
             # 1: Area for logged commands and results
-            with Container(id="command-history"):
-                yield RichLog(
-                    id="output",
-                    auto_scroll=True,
-                )
+            with VerticalScroll(id="command-history"):
+                pass
             # 2: Box for users to provide us input
             yield Input(
                 placeholder="Type @ to mention skills, / for commands",
@@ -416,8 +444,6 @@ class MainScreen(Screen):
                 validate_on=["submitted"],
                 validators=[ValidateCommand()],
             )
-            # 3: Row for timer 
-            yield MyTimerBox()
 
 
     def _handle_quit(self, input_value: str) -> None: 
@@ -428,65 +454,72 @@ class MainScreen(Screen):
     
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """o.i.s. -> does things (command parsing, execution)"""
-        log = self.query_one("#output", RichLog)
+        # Grab the VerticalScroll container        
+        history = self.query_one("#command-history", VerticalScroll)
         
         if not event.value: 
-            log.write(Text.from_markup(f"\n[blue]•[/blue] [red]No command entered.[/red]"))
+            history.mount(Static("• No command entered.", classes="error-message"))
             return
+        
+        # Mount the user's message
+        user_msg = Static(event.value, classes="user-message")
+        history.mount(user_msg)
 
-
+        # Parse command and extract values
         parsed_command = self.command_handler.parse_command(event.value)
-        status = parsed_command["status"]
         command = parsed_command["command"]
         message = parsed_command["message"]
-
-        output_text = f"\n❯ {event.value}\n{parsed_command['message']}"
-
-        log.write(Text.from_markup(output_text))
+        
+        # Mount the initial system response
+        response_message = Static(parsed_command["message"], classes="system-message")
+        history.mount(response_message)
 
         if command == "quit":
-            log.write(Text.from_markup(message))
             quit_command(self)
+            
         elif command == "clear":
-            log.clear()
+            history.query("*").remove()
+            
         elif command == "help":
-            log.write(Rule(title="A list of all possible commands", align="center"), width=54)
-            help_command(log, 
-                            f"/add <skill>               -- adds a skill\n/delete <skill>            -- delete a skill\n/list                      -- lists all your skills\n/quit                      -- quit the app\n/clear                     -- clear the terminal\n/timer <skill> <action>    -- times your skills")
-            log.write(Rule(), width=54)
+            help_text = (
+                "[b]A list of all possible commands[/b]\n"
+                "---------------------------------------\n"
+                "/add <skill>       -- adds a skill\n"
+                "/delete <skill>    -- delete a skill\n"
+                "/list              -- lists all your skills\n"
+                "/quit              -- quit the app\n"
+                "/clear             -- clear the terminal\n"
+                "/timer <skill> <action>    -- times your skills"
+            )
+            history.mount(Static(help_text, classes="output-message"))
+            
         elif command in ["add", "delete", "list", "timer"]: 
             with sqlite3.connect("user.db") as connection: 
                 arg_list = event.value.split(" ", maxsplit=1)
-                if command == "delete":
+                
+                if command == "delete" and len(arg_list) > 1:
                     # Ensure that a parameter was provided
                     skill_name = arg_list[1]
                     remove_skill_command(connection, skill_name)
-                elif command == "add": 
+                    
+                elif command == "add" and len(arg_list) > 1: 
                     # Ensure that a parameter was provided
                     skill_name = arg_list[1]
                     add_skill_command(connection, skill_name)
+                    
                 elif command == "list": 
-                    list_skills_command(self, connection)
+                    list_skills_command(self, connection, history)
+                    
                 elif command == "timer": 
                     arg_list = event.value.split()
                     
                     if len(arg_list) != 3:  
-                        log.write("[blue]•[/blue] [red]Usage: /timer <skill> <start|stop>[/red]")
-                        return
-
-                    _, skill_name, action = arg_list
-                    
-                    timer = self.query_one(MyTimerBox)
-                    
-                    success = time_skill_command(connection, skill_name, action, log)
-                    
-                    if success and action == "start": 
-                        timer.start()
-                    elif success and action == "stop":
-                        timer.stop()
-                        timer.reset()
-                        
+                        history.mount(Static("• [red]Usage: /timer <skill> <start|stop>[/red]", classes="error-message"))
+                    else:
+                        _, skill_name, action = arg_list 
+                        success = time_skill_command(connection, skill_name, action, history)
+        
+        history.scroll_end(animate=False)
         event.input.clear()
 
         """
@@ -500,9 +533,6 @@ class MainScreen(Screen):
         """
 
     def on_mount(self) -> None:
-        self.title = "Mano"
-        # self.sub_title = "Road to 万"
-
         current_app: Any = self.app
         user_name = current_app.user_name
     
@@ -515,7 +545,7 @@ class MainScreen(Screen):
 # ---------------------------------------------------------------------------
 
 class MyTimerBox(Horizontal): 
-    """Times each skill and displays it between RichLog and Input"""
+    """Times each skill session and displays elapsed time."""
     # Holds the time for the specific session
     elapsed_time: reactive[int] = reactive(0)
     # Flag that tracks if the timer should run or not, controlled by start() and stop()
@@ -543,8 +573,6 @@ class MyTimerBox(Horizontal):
         self.elapsed_time = 0
     
     def compose(self): 
-        yield Clock()
-        yield Static("", id="spacer") # Takes up the middle space
         yield Static("00:00", id="time-display") 
         
     
@@ -557,9 +585,8 @@ class CommandLine(App):
     CSS_PATH = "styles.tcss"
 
     def on_mount(self) -> None:
-        self.user_name = "Kepo"
+        self.user_name = "Unknown"
         self.new_user = True
-
         with sqlite3.connect("user.db") as connection:
             user = load_user_table(connection)
 

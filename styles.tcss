@@ -1,41 +1,76 @@
-$color-screen-bg: #201E1D;
-$color-surface: #272524;
-$color-border: #595550;
-$color-accent: #D38466;
-$color-error: #C16A6A;
-$color-orange: #d75f00 ;
+/* ===========================================================================
+   VARIABLES
+   ========================================================================= */
+
+/* Color Palette - Catppuccin Mocha */
+$prussian-blue-dark: #cdd6f4; /* text */
+$prussian-blue: #313244;      /* surface0 */
+$regal-navy: #45475a;         /* surface1 */
+$tech-blue: #89b4fa;          /* blue */
+$brilliant-azure: #cba6f7;    /* mauve */
+$fresh-sky: #89dceb;          /* sky */
+$frozen-lake: #313244;        /* surface0 */
+$icy-blue: #1e1e2e;           /* base */
+$alice-blue: #181825;         /* mantle */
+
+/* Semantic Colors */
+$color-screen-bg: $icy-blue;
+$color-surface: $alice-blue;
+$color-border: $regal-navy;
+$color-accent: $brilliant-azure;
+$color-error: #f38ba8;
+$color-primary: $tech-blue;
+
+
+/* ===========================================================================
+   BASE / GLOBAL ELEMENTS
+   ========================================================================= */
 
 Screen {
-    background: $color-surface;
+    background: $icy-blue;
+    color: $prussian-blue-dark;
 }
 
 Header {
-    background: $color-orange;
+    background: $tech-blue;
     text-align: center;
     content-align: center middle;
+    color: $alice-blue;
 }
 
-#main-screen {
-    padding-bottom: 1;
-    background: $color-surface;
+Static {
+    content-align: left middle;
+    color: $prussian-blue-dark;
 }
 
-/* Welcome Screen */
+VerticalScroll {
+    scrollbar-size-vertical: 1;
+    scrollbar-color: $tech-blue;
+    scrollbar-color-hover: $brilliant-azure;
+    scrollbar-color-active: $fresh-sky;
+}
+
+
+/* ===========================================================================
+   WELCOME SCREEN
+   ========================================================================= */
+
 #welcome-screen {
     align: center middle;
     padding: 4;
+    color: $prussian-blue-dark;
 }
 
 #welcome-interface {
-    background: $color-surface;
-    border: wide white;
+    background: $alice-blue;
+    border: wide $tech-blue;
     align: center middle;
     width: 100%;
     height: 100%;
 }
 
 #welcome-title {
-    color: $color-accent;
+    color: $tech-blue;
     text-style: bold;
     text-align: center;
     margin-bottom: 1;
@@ -44,31 +79,133 @@ Header {
 .user-input {
     margin-bottom: 1;
     width: 40;
+    color: $prussian-blue-dark;
 }
-
 
 .user-input:focus {
     border: tall $color-accent;
-} 
+}
 
-/* Main Layout */
+
+/* ===========================================================================
+   MAIN SCREEN
+   ========================================================================= */
+
+#main-screen {
+    padding-top: 1;
+    padding-bottom: 1;
+    padding-right: 2;
+    padding-left: 2;
+    background: $icy-blue;
+}
+
+/* Command History Container */
+#command-history {
+    height: 1fr;
+}
+
+/* Welcome Widget */
+.welcome-widget {
+    margin-bottom: 1;
+}
+
+
+/* ===========================================================================
+   MESSAGE TYPES
+   ========================================================================= */
+
+/* User Message */
+.user-message {
+    border-left: thick $fresh-sky;
+    padding-top: 1;
+    padding-bottom: 1;
+    padding-left: 2;
+    margin-right: 2;
+    margin-bottom: 1;
+    color: $alice-blue;
+    background: $tech-blue;
+}
+
+/* System Message */
+.system-message {
+    border-left: thick $prussian-blue;
+    padding-left: 1;
+    margin-bottom: 2;
+    color: $prussian-blue-dark;
+}
+
+/* Output Message */
+.output-message {
+    border-left: thick $regal-navy;
+    padding-left: 1;
+    margin-bottom: 2;
+    color: $prussian-blue-dark;
+}
+
+/* Error Message */
+.error-message {
+    border-left: thick $color-error;
+    padding-left: 1;
+    margin-bottom: 2;
+    color: $color-error;
+}
+
+
+/* ===========================================================================
+   TIMER COMPONENTS
+   ========================================================================= */
+
+MyTimerBox {
+    height: 1;
+    margin-bottom: 1;
+    align-horizontal: right;
+}
+
+#time-display {
+    background: $tech-blue;
+    color: $alice-blue;
+    width: auto;
+}
+
+/* ===========================================================================
+   INPUT COMPONENTS
+   ========================================================================= */
+
+.input-text {
+    border: none;
+    border-left: thick $tech-blue;
+    background: $frozen-lake;
+    color: $prussian-blue-dark;
+    padding-top: 1;
+    padding-left: 2;
+    padding-bottom: 1;
+    margin-bottom: 1;
+    margin-top: 1;
+}
+
+.input-text:focus,
+.input-text.-valid:focus,
+.input-text.-invalid:focus {
+    border-left: thick $fresh-sky;
+}
+
+
+/* ===========================================================================
+   LAYOUT COMPONENTS
+   ========================================================================= */
+
 #grid {
     layout: grid;
-    /* grid-size: <columns> <rows> */
     grid-size: 2 1;
     margin-bottom: 0;
     height: 11;
 }
 
-Static {
-    content-align: center middle;
-}
-
-/* Content Areas */
 .panel {
     padding: 1 1;
-    border: round $color-border;
-    background: $color-surface;
+    border: round $regal-navy;
+    background: $alice-blue;
+    color: $prussian-blue-dark;
     height: 100%;
     width: 100%;
     margin: 0;
@@ -78,59 +215,19 @@ Static {
     text-align: center;
 }
 
-#command-history {
-    content-align: left top;
-    height: 1fr;
-    width: 100%;
-    margin-left: 0;
-    margin-right: 0;
-    border: round $color-border;
-    background: $color-surface;
-}
-
 #output {
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
     background: transparent;
-    padding: 1 2; /* 1 row top/bottom, 2 columns left/right */
+    padding: 1 2;
 }
 
-/* Timer */
-MyTimerBox {
-    height: 1;
-    margin-bottom: 1;
-}
 
-#spacer {
-    width: 1fr;
-    background: transparent;
-}
+/* ===========================================================================
+   UTILITIES
+   ========================================================================= */
 
-Clock {
-    background: $color-orange;
-    width: auto;
-}
-
-#time-display {
-    background: $color-orange;
-    width: auto;
-}
-
-/* Input Components */
-.input-text {
-    border: round $color-border;
-	background: $color-surface;
-    margin-bottom: 1;
-}
-
-.input-text:focus, .input-text.-valid:focus, .input-text.-invalid:focus {
-    border: round $color-accent; /* Claude-like soft amber focus */
-	background: transparent;
-	background-tint: transparent;
-}
-
-/* Utilities */
 #error {
     color: $color-error;
     text-style: bold;
