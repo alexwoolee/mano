@@ -28,6 +28,16 @@ COMMANDS = {
     "/help", "/add", "/list", "/clear", "/quit", "/q", "/timer", "/delete", 
 }
 
+
+def normalize_command_token(token: str) -> str:
+    """Normalize command tokens so both 'add' and '/add' resolve to '/add'."""
+    token = token.strip().lower()
+    if not token:
+        return token
+    if token.startswith("/"):
+        return token
+    return f"/{token}"
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -103,11 +113,13 @@ def add_skill_command(connection: sqlite3.Connection, name: str) -> None:
     connection.commit()
 
 
-def remove_skill_command(connection: sqlite3.Connection, skill_name: str) -> None:
+def remove_skill_command(connection: sqlite3.Connection, skill_name: str) -> bool:
     cursor = connection.cursor()
     skill_name = skill_name.strip().lower()
     query = "DELETE FROM SKILLS WHERE NAME = ?"
     cursor.execute(query, (skill_name,))
+    connection.commit()
+    return cursor.rowcount > 0
 
 
 def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: str, history: VerticalScroll) -> bool:
@@ -125,7 +137,7 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
     row = cursor.fetchone()
     
     if row is None:
-        history.mount(Static("[#cba6f7]•[/#cba6f7] [#f38ba8]error: this skill does not exist.[/#f38ba8]", classes="output-message"))
+        history.mount(Static("[#cba6f7]•[/#cba6f7] [#f38ba8]Error: this skill does not exist.[/#f38ba8]", classes="output-message"))
         return success
 
     skill_id = row[0]
@@ -139,6 +151,9 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
         cursor.execute(match_query, (skill_name, skill_id))
         cursor.execute("INSERT INTO sessions (skill_id) VALUES (?)" , (skill_id, ),)
         success = True 
+        timer_widget = MyTimerBox(skill_name=skill_name, classes="message")
+        timer_widget.start()
+        history.mount(timer_widget)
     # action is stop
     elif action == "stop":
         # get the starting timestamp we obtained in action start
@@ -149,7 +164,12 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
         # Find the most recent unfinished session, ensure only close unfinished sessions with IS NULL condition
         query = "SELECT start_time FROM sessions WHERE skill_id = ? AND duration IS NULL ORDER BY start_time DESC LIMIT 1"
         cursor.execute(query, (skill_id,))
-        start_time_string = cursor.fetchone()[0]
+        row = cursor.fetchone()
+        if row is None:
+            history.mount(Static("[#cba6f7]•[/#cba6f7] [#f38ba8]Error: no active session was found for that skill.[/#f38ba8]", classes="output-message"))
+            return False
+
+        start_time_string = row[0]
         start_time = datetime.fromisoformat(start_time_string)
         end_time = datetime.now()
         
@@ -157,10 +177,11 @@ def time_skill_command(connection: sqlite3.Connection, skill_name: str, action: 
         
         update_query = "UPDATE sessions SET duration = ? WHERE start_time = ? AND skill_id = ?"
         cursor.execute(update_query, (duration, start_time, skill_id, ))
+        connection.commit()
         success = True
     # invalid action
     else: 
-        history.mount(Static("[#cba6f7]•[/#cba6f7][#f38ba8]error: please write a valid timer action[/#f38ba8]", classes="output-message"))
+        history.mount(Static("[#cba6f7]•[/#cba6f7] [#f38ba8]Error: please write a valid timer action.[/#f38ba8]", classes="output-message"))
         success = False
     
     return success
@@ -175,28 +196,25 @@ def list_skills_command(self, connection: sqlite3.Connection, history: VerticalS
     skills = cursor.fetchall()   
     if not skills:
         empty_message = (
-            "[bold #cba6f7]Skill Library[/bold #cba6f7]\n"
+            "[bold #cba6f7]Skills[/bold #cba6f7]\n"
             "[dim]No skills yet.[/dim]\n"
-            "[dim]Try[/dim] [bold]/add reading[/bold] [dim]to start your list.[/dim]"
+            "[dim]Use[/dim] [bold]add reading[/bold] [dim]to get started.[/dim]"
         )
         history.mount(Static(empty_message, classes="output-message"))
         return
 
-    list_of_skills = []
-    for i, (skill,) in enumerate(skills, start=1):
-        list_of_skills.append(format_skill_output(i, skill))
-
     styled_output = (
-        "[bold #cba6f7]Skill Library[/bold #cba6f7]\n"
-        f"[dim]{len(skills)} tracked[/dim]\n\n"
-        + "\n".join(list_of_skills)
+        "[bold #cba6f7]Skills[/bold #cba6f7]\n"
+        f"[dim]{len(skills)} tracked[/dim]\n"
+        "[dim]────────────────────────[/dim]\n"
+        + "\n".join(format_skill_output(i, skill) for i, (skill,) in enumerate(skills, start=1))
     )
     history.mount(Static(styled_output, classes="output-message"))
     
      
 def format_skill_output(index: int, skill: str) -> str: 
     return (
-        f"[#89dceb]{index:>2}.[/#89dceb] "
+        f"[dim]{index:>2}.[/dim] "
         f"[bold #cdd6f4]{skill.title()}[/bold #cdd6f4]"
     )
 
@@ -205,16 +223,16 @@ def help_command(history: VerticalScroll) -> None:
     """Displays help information in the TUI"""
     command_width = 31
     help_lines = [
-        ("/add <skill>", "add a new skill"),
-        ("/delete <skill>", "remove a skill"),
-        ("/list", "view all tracked skills"),
-        ("/timer <skill> <start|stop>", "track session time"),
-        ("/clear", "clear command history"),
-        ("/quit", "exit Mano"),
+        ("add <skill>", "add a new skill"),
+        ("delete <skill>", "remove a skill"),
+        ("list", "view all tracked skills"),
+        ("timer <skill> <start|stop>", "track session time"),
+        ("clear", "clear command history"),
+        ("quit", "exit Mano"),
     ]
-    help_text = "[bold #cba6f7]Command Guide[/bold #cba6f7]\n[dim]Use slash commands in the input below[/dim]\n\n"
+    help_text = "[bold #cba6f7]Commands[/bold #cba6f7]\n[dim]Use slash commands in the input below.[/dim]\n\n"
     help_text += "\n".join(
-        f"[#89dceb]{command:<{command_width}}[/#89dceb] [dim]- {description}[/dim]"
+        f"[#89dceb]{command:<{command_width}}[/#89dceb] [dim]{description}[/dim]"
         for command, description in help_lines
     )
     history.mount(Static(help_text, classes="output-message"))
@@ -247,7 +265,7 @@ def is_valid_command(command: str) -> bool:
     """Helper function to validate a command"""
     if not command:
         return False
-    base_command = command.split(" ", maxsplit=1)[0]
+    base_command = normalize_command_token(command.split(" ", maxsplit=1)[0])
     return base_command in COMMANDS
 
 
@@ -323,44 +341,45 @@ class CommandHandler:
     def parse_command(self, command: str) -> dict[str, Any]:
         command = command.strip()
         if not command:
-            return self.create_result(1, "error", "[#cba6f7]•[/#cba6f7] [#f38ba8]No command entered.[/#f38ba8]")
+            return self.create_result(1, "error", "[#cba6f7]•[/#cba6f7] [#f38ba8]Error: no command entered.[/#f38ba8]")
         
-        cmd = command.split()[0] if command.split() else command    
+        raw_cmd = command.split()[0] if command.split() else command
+        cmd = normalize_command_token(raw_cmd)
         if cmd in COMMANDS:
             result = {"status": 1, "command": "dummy", "message": "dummy"}
             if cmd == "/quit" or cmd == "/q":
-                result = self.create_result(0, "quit", "[#cba6f7]•[/#cba6f7] [#fab387]exiting...[/#fab387]")
+                result = self.create_result(0, "quit", "[#cba6f7]•[/#cba6f7] [#fab387]Exiting.[/#fab387]")
             elif cmd == "/help":
                 # Append help info to Static
                 result = self.create_result(
-                    0, "help", "[#cba6f7]•[/#cba6f7] [#a6e3a1]printing help...[/#a6e3a1]"
+                    0, "help", "[#cba6f7]•[/#cba6f7] [#a6e3a1]Printing help.[/#a6e3a1]"
                 )
             elif cmd == "/clear":
                 result = self.create_result(
-                    0, "clear", "[#cba6f7]•[/#cba6f7] [#a6e3a1]clearing log...[/#a6e3a1]"
+                    0, "clear", "[#cba6f7]•[/#cba6f7] [#a6e3a1]Clearing log.[/#a6e3a1]"
                 )
             elif cmd == "/add": 
                 result = self.create_result(
-                    0, "add", "[#cba6f7]•[/#cba6f7] [#f9e2af]adding skill...[/#f9e2af]"
+                    0, "add", "[#cba6f7]•[/#cba6f7] [#f9e2af]Adding skill.[/#f9e2af]"
                 ) 
             elif cmd == "/delete":
                 result = self.create_result( 
-                    0, "delete", "[#cba6f7]•[/#cba6f7] [#94e2d5]removing skill...[/#94e2d5]"
+                    0, "delete", "[#cba6f7]•[/#cba6f7] [#94e2d5]Removing skill.[/#94e2d5]"
                 )
             elif cmd == "/list":
                 result = self.create_result(
-                    0, "list", "[#cba6f7]•[/#cba6f7] [#a6e3a1]listing skills...[/#a6e3a1]"
+                    0, "list", "[#cba6f7]•[/#cba6f7] [#a6e3a1]Listing skills.[/#a6e3a1]"
                 ) 
             elif cmd == "/timer":
                 result = self.create_result( 
-                    0, "timer", "[#cba6f7]•[/#cba6f7] [#cba6f7]timer command...[/#cba6f7]"
+                    0, "timer", "[#cba6f7]•[/#cba6f7] [#cba6f7]Timer command.[/#cba6f7]"
                 )
             return result
 
         else:
             # Append error msg to Static
             result = self.create_result(
-                1, "error", "[#cba6f7]•[/#cba6f7] [#f38ba8]error occured: command faulty[/#f38ba8]"
+                1, "error", "[#cba6f7]•[/#cba6f7] [#f38ba8]Error: command faulty.[/#f38ba8]"
             )
             return result
 
@@ -376,7 +395,7 @@ class ValidateCommand(Validator):
         if is_valid_command(command):
             return self.success()
         else:
-            return self.failure("Not a valid command")
+            return self.failure("Error: not a valid command.")
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +454,7 @@ class WelcomeScreen(Screen):
             # Switch from Welcome to Main Screen
             self.app.switch_screen(MainScreen())
         else:
-            error_msg.update("[#cba6f7]•[/#cba6f7] Please enter a valid input!")
+            error_msg.update("[#cba6f7]•[/#cba6f7] Error: please enter a valid input.")
 
 
 class MainScreen(Screen):
@@ -484,7 +503,7 @@ class MainScreen(Screen):
         history = self.query_one("#command-history", VerticalScroll)
         
         if not event.value: 
-            history.mount(Static("• No command entered.", classes="error-message"))
+            history.mount(Static("• Error: no command entered.", classes="error-message"))
             return
         
         # Mount the user's message
@@ -516,12 +535,17 @@ class MainScreen(Screen):
                 if command == "delete" and len(arg_list) > 1:
                     # Ensure that a parameter was provided
                     skill_name = arg_list[1]
-                    remove_skill_command(connection, skill_name)
+                    deleted = remove_skill_command(connection, skill_name)
+                    if deleted:
+                        history.mount(Static(f"• Removed skill: [bold]{skill_name.strip().lower()}[/bold].", classes="system-message"))
+                    else:
+                        history.mount(Static(f"• Error: skill not found: [bold]{skill_name.strip().lower()}[/bold].", classes="error-message"))
 
                 elif command == "add" and len(arg_list) > 1:
                     # Ensure that a parameter was provided
                     skill_name = arg_list[1]
                     add_skill_command(connection, skill_name)
+                    history.mount(Static(f"• Added skill: [bold]{skill_name.strip().lower()}[/bold].", classes="system-message"))
 
                 elif command == "list":
                     list_skills_command(self, connection, history)
@@ -530,7 +554,7 @@ class MainScreen(Screen):
                     arg_list = event.value.split()
 
                     if len(arg_list) != 3:
-                        history.mount(Static("• [red]Usage: /timer <skill> <start|stop>[/red]", classes="error-message"))
+                        history.mount(Static("• Error: usage: /timer <skill> <start|stop>.", classes="error-message"))
                     else:
                         _, skill_name, action = arg_list
                         time_skill_command(connection, skill_name, action, history)
@@ -560,12 +584,17 @@ class MainScreen(Screen):
 # Timer
 # ---------------------------------------------------------------------------
 
-class MyTimerBox(Horizontal): 
+class MyTimerBox(Vertical): 
     """Times each skill session and displays elapsed time."""
     # Holds the time for the specific session
     elapsed_time: reactive[int] = reactive(0)
     # Flag that tracks if the timer should run or not, controlled by start() and stop()
     running: bool = False
+    skill_name: str = "Unknown"
+
+    def __init__(self, skill_name: str = "Unknown", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.skill_name = skill_name
     
     def on_mount(self) -> None: 
         self.set_interval(1, self._tick)
@@ -577,19 +606,31 @@ class MyTimerBox(Horizontal):
     def watch_elapsed_time(self, value: int) -> None: 
         minutes = value // 60
         seconds = value % 60 
-        self.query_one("#time-display", Static).update(f"{minutes:02}:{seconds:02}")
+        hours = minutes // 60
+        self.query_one("#time-display", Static).update(f"Time: {hours:02}h:{minutes:02}m:{seconds:02}s")
     
     def start(self): 
         self.running = True
+        try:
+            self.query_one("#timer-status", Static).update("Status: running")
+        except Exception:
+            pass
         
     def stop(self):
         self.running = False
+        try:
+            self.query_one("#timer-status", Static).update("Status: stopped")
+        except Exception:
+            pass
         
     def reset(self):
         self.elapsed_time = 0
     
     def compose(self): 
-        yield Static("00:00", id="time-display") 
+        # to be displayed: skill name, timer, start/pause, stop, number of sessions for that skill, total time for that skill, most recent 5 sessions with dates duration, progress bar to 10,000 hours, 
+        yield Static(f"Skill: {self.skill_name}", id="skill-name")
+        yield Static("Time: 00:00", id="time-display")
+        yield Static("Status: running", id="timer-status")
         
     
 # ---------------------------------------------------------------------------

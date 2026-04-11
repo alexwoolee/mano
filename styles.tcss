@@ -130,22 +130,33 @@ VerticalScroll {
 .system-message {
     border-left: thick $prussian-blue;
     padding-left: 1;
+    margin-right: 2;
     margin-bottom: 2;
     color: $prussian-blue-dark;
 }
 
 /* Output Message */
 .output-message {
-    border: round $regal-navy;
-    padding: 1 2;
+    border-left: thick $regal-navy;
+    padding-top: 1;
+    padding-bottom: 1;
+    padding-left: 2;
+    margin-right: 2;
     margin-bottom: 1;
     color: $prussian-blue-dark;
+}
+
+.message {
+    margin-right: 2;
 }
 
 /* Error Message */
 .error-message {
     border-left: thick $color-error;
-    padding-left: 1;
+    padding-top: 1;
+    padding-bottom: 1;
+    padding-left: 2;
+    margin-right: 2;
     margin-bottom: 2;
     color: $color-error;
 }
@@ -156,15 +167,28 @@ VerticalScroll {
    ========================================================================= */
 
 MyTimerBox {
-    height: 1;
+    height: auto;
+    min-height: 4;
     margin-bottom: 1;
-    align-horizontal: right;
+    padding: 1 2;
+    border: round $regal-navy;
+}
+
+#skill-name {
+    color: $prussian-blue-dark;
+    text-style: bold;
+    margin-bottom: 1;
 }
 
 #time-display {
-    background: $tech-blue;
-    color: $alice-blue;
+    color: $fresh-sky;
     width: auto;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#timer-status {
+    color: $tech-blue;
 }
 
 /* ===========================================================================
