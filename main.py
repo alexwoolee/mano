@@ -13,12 +13,13 @@ from rich.panel import Panel
 from rich.columns import Columns
 from rich.style import Style
 from rich.align import Align
+from textual.binding import Binding
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Vertical, Center, Horizontal, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.validation import ValidationResult, Validator
-from textual.widgets import Button, Label, Header, Input, Static, RichLog
+from textual.widgets import Button, Label, Header, Input, Footer, Static, RichLog
 from textual.widget import Widget
 
 # 3. Local
@@ -476,19 +477,22 @@ class MainScreen(Screen):
 
     def compose(self) -> ComposeResult:
         # Main user interactable elements
-        with Container(id="main-screen"):
-            # 1: Area for logged commands and results
-            with VerticalScroll(id="command-history"):
-                pass
-            # 2: Box for users to provide us input
-            yield Input(
-                placeholder="Type @ to mention skills, / for commands",
-                classes="input-text",
-                id="input",
-                max_length=256,
-                validate_on=["submitted"],
-                validators=[ValidateCommand()],
-            )
+        with Horizontal(): 
+            with Container(id="main-section"):
+                # 1: Area for logged commands and results
+                with VerticalScroll(id="command-history"):
+                    pass
+                # 2: Box for users to provide us input
+                yield Input(
+                    placeholder="Type @ to mention skills, / for commands",
+                    classes="input-text",
+                    id="input",
+                    max_length=256,
+                    validate_on=["submitted"],
+                    validators=[ValidateCommand()],
+                )
+                yield MyFooter(id="my-footer")
+            yield Container(id="side-info-panel")
 
 
     def _handle_quit(self, input_value: str) -> None: 
@@ -578,7 +582,27 @@ class MainScreen(Screen):
     
         # Print welcome message in RichLog
         print_welcome_message(self, user_name)
-        
+
+        side_info_panel = self.query_one("#side-info-panel", Container)
+        side_info_panel.mount(
+            Static(
+                "[bold #89b4fa]Quick Tips[/bold #89b4fa]\n"
+                "[dim]Use /help to see commands.\n"
+                "Track a skill with /timer <skill> <start|stop>.[/dim]",
+                classes="output-message",
+                id="side-info-content",
+            )
+        )
+
+# --------------------------------------------------------------------------- 
+# Footer 
+# ---------------------------------------------------------------------------
+
+class MyFooter(Footer): 
+    BINDINGS = [
+        Binding(key="q", action="quit", description="Quit the app"),
+        Binding(key="question_mark", action="help", description="Show help screen", key_display="?")
+    ]
 
 # --------------------------------------------------------------------------- 
 # Timer
